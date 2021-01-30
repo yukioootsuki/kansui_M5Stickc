@@ -1,0 +1,189 @@
+/*
+    hardware: M5Stack unit ADC
+    connect: PORTA(21, 22) or PORTC(17, 16)
+*/
+//kokokara
+//sirialmonitor is 300bps
+//西は1秒遅延してポンプがオン
+//#include <M5StickC.h>
+
+#define BLYNK_PRINT Serial    // Blynkライブラリーのデバッグ情報出力先を指定
+#define BLYNK_DEBUG           // Blynkデバッグ情報を出力
+#include <BlynkSimpleEsp32.h> // BlynkSimpleEsp32.h をインクルード
+#define BLYNK_PRINT Serial    // Blynkライブラリーのデバッグ情報出力先を指定
+
+//WiFi接続情報
+const char* ssid     =  "*****************";
+const char* password =  "******************";
+//Blynk接続情報
+const char* auth = "************************";
+//int16_t result,vol;   //ｺﾝﾊﾟｲﾙｴﾗｰ回避の為
+unsigned int ptm = 0; //ポンプ運転時間積算用18時間迄
+const int PUMP = 26;  //PUMPを26番pinに設定
+const int CTM  = 36;  //カレンダータイマ入力36ピン
+int val = 0;          //水分値の状態を格納
+int old_val = 0;      //古いvalを格納
+int state = 0;        //SWの状態を格納
+//int PIN = 32;         //水分入力
+//int dm= 0;               //moisture digital read
+float m;              //moisture %
+char sm;
+//kokomade
+#include <M5StickC.h>
+#include <Wire.h>
+#include "ADS1100.h"
+
+ADS1100 ads;
+#define REF_VOL    3.3
+#define ADC_BASE   REF_VOL/32768
+
+void setup(void)
+{
+//kokokara
+  //M5.begin();
+  //pinMode(PIN, ANALOG);                 //水分入力
+  //M5.Lcd.setTextColor(GREEN, {BLACK});
+  //M5.Lcd.setRotation( 3 );              // 左を上にする
+  //M5.Lcd.setTextSize(1);                // 文字サイズを2にする
+  pinMode(PUMP,OUTPUT);                 //26番pinを出力pinに設定
+  pinMode(CTM,INPUT); //36番pinを入力pinに設定
+    // auth, ssid, pass を指定してBlynkの初期化
+    Blynk.begin(auth, ssid, password);
+//kokomade
+    M5.begin(true,true,false);
+    Serial.begin(115200);
+
+    M5.Lcd.fillScreen(BLACK);
+    M5.Lcd.setTextColor(ORANGE);
+    M5.Lcd.setRotation( 3 );
+    // The address can be changed making the option of connecting multiple devices
+    ads.getAddr_ADS1100(ADS1100_DEFAULT_ADDRESS);   // 0x48, 1001 000 (ADDR = GND)
+
+    // The ADC gain (PGA), Device operating mode, Data rate
+    // can be changed via the following functions
+
+    ads.setGain(GAIN_ONE);          // 1x gain(default)
+    // ads.setGain(GAIN_TWO);       // 2x gain
+    // ads.setGain(GAIN_FOUR);      // 4x gain
+    // ads.setGain(GAIN_EIGHT);     // 8x gain
+
+    ads.setMode(MODE_CONTIN);       // Continuous conversion mode (default)
+    // ads.setMode(MODE_SINGLE);    // Single-conversion mode
+
+    ads.setRate(RATE_8);            // 8SPS (default)
+    // ads.setRate(RATE_16);        // 16SPS
+    // ads.setRate(RATE_32);        // 32SPS
+    // ads.setRate(RATE_128);       // 128SPS
+
+    ads.setOSMode(OSMODE_SINGLE);   // Set to start a single-conversion
+
+    ads.begin();
+}
+
+void loop(void)
+{
+  delay(2000);//西は1000、東は2000
+    byte error;
+    int8_t address;
+
+    address = ads.ads_i2cAddress;
+    // The i2c_scanner uses the return value of
+    // the Write.endTransmisstion to see if
+    // a device did acknowledge to the address.
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+    if (error == 0)
+    {
+        int16_t result,vol;
+        float temp;
+
+        Serial.println("Getting Differential Reading from ADS1100");
+        Serial.println(" ");
+        result = ads.Measure_Differential();
+        Serial.print("Digital Value of Analog Input between Channel 0 and 1: ");
+        Serial.println(result);
+        M5.Lcd.fillScreen(BLACK);
+        char data[20] = { 0 };
+        sprintf(data, "%d", result);
+        temp = result * ADC_BASE * 4;
+        vol = temp *1000;
+        M5.Lcd.drawCentreString("Raw data ", 0, 10, 2);
+        M5.Lcd.drawCentreString(data, 0, 30, 4);
+        sprintf(data, "%d", vol);
+        M5.Lcd.setTextColor(GREEN);
+        M5.Lcd.drawCentreString("Convert to ", 120, 10, 2);
+        M5.Lcd.drawCentreString(data, 120, 30, 4);
+
+        M5.Lcd.drawCentreString("*0.1 %", 120, 50, 2);//original = mV
+
+        Serial.println(" ");
+        Serial.println("        ***************************        ");
+        Serial.println(" ");
+//kokokara
+  //delay(1000);//西は1000、東は2000
+  Blynk.run(); //  Blynkの起動
+  val = digitalRead(CTM);
+  //dm = analogRead(PIN);
+  // m = dm / 8.19 ;//12.41⇒8.19
+  //Serial.println(dm);
+  //Serial.println(m);
+   Serial.println(val);
+   Serial.println(old_val);
+   Serial.println(state);
+   Serial.println(ptm);
+   //M5.Lcd.setRotation( 3 );    // 左を上にする
+   //M5.Lcd.setTextSize(2);      // 文字サイズを2にする
+   //M5.Lcd.setCursor(0, 0, 1);
+   //M5.Lcd.printf("AD: %4.0d  \r\n", dm);
+   //M5.Lcd.printf("moist.:%5.1f%%\r\n", m);
+   M5.Lcd.setCursor(0, 70, 1);
+   M5.Lcd.printf("val:%d\r\n", val);
+   //M5.Lcd.drawCentreString("val", 0, 70, 1);
+   //M5.Lcd.drawCentreString(val, 20, 70, 1);
+   M5.Lcd.setCursor(40, 70, 1);
+   M5.Lcd.printf("state:%d\r\n", state);
+   //M5.Lcd.drawCentreString("state", 50, 70, 1);
+   //M5.Lcd.drawCentreString(state, 90, 70, 1);
+   M5.Lcd.setCursor(100, 70, 1);
+   M5.Lcd.printf("ptm:%4d\r\n", ptm);
+   //M5.Lcd.drawCentreString("ptm", 110, 70, 1);
+   //M5.Lcd.drawCentreString(ptm, 140, 70, 1);
+       // V1 ピンに対して水分の値を送信
+    Blynk.virtualWrite(V1,vol);
+
+    if((val == HIGH)&&(state == 0)&&(vol<=400)){
+      state=1-state;
+      }
+    if(ptm>=300){
+       state=1-state;//西は600、東は300
+      }
+      //old_val;
+     if(state == 1){
+           digitalWrite(PUMP, HIGH);
+           ptm++;
+      }else{
+        digitalWrite(PUMP,LOW);
+      }
+     if(val == LOW){
+      ptm = 0;
+      digitalWrite(PUMP,LOW);
+     }
+     if((val==HIGH)&&(ptm>=300)){
+      state=1;//西は600、東は300
+     }
+//kokomade
+    }
+    else
+    {
+        Serial.println("ADS1100 Disconnected!");
+        Serial.println(" ");
+        Serial.println("        ************        ");
+        Serial.println(" ");
+        M5.Lcd.setTextFont(4);
+        M5.Lcd.setTextColor(TFT_WHITE, TFT_BLACK);
+        M5.Lcd.drawString("Not Found.",0, 20, 2);
+    }
+
+    //delay(1000);//西は1000、東は2000
+}
+
